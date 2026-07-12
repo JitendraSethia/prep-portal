@@ -2,18 +2,44 @@
 
 import { useState } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
 
-/** Renders text with minimal **bold** and newline support (no MD dependency). */
-function RichText({ text }: { text: string }) {
+/** Renders the AI explanation as Markdown with KaTeX math support. */
+function Explanation({ text }: { text: string }) {
   return (
-    <div className="whitespace-pre-wrap text-sm leading-relaxed">
-      {text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={i}>{part.slice(2, -2)}</strong>;
-        }
-        return <span key={i}>{part}</span>;
-      })}
+    <div className="space-y-2 text-sm leading-relaxed [&_.katex]:text-[1.05em]">
+      <Markdown
+        remarkPlugins={[remarkMath]}
+        // throwOnError:false keeps partial/malformed LaTeX from crashing mid-stream.
+        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+        components={{
+          p: (props) => <p className="mb-2 last:mb-0" {...props} />,
+          strong: (props) => <strong className="font-semibold" {...props} />,
+          ul: (props) => (
+            <ul className="mb-2 list-disc space-y-1 pl-5" {...props} />
+          ),
+          ol: (props) => (
+            <ol className="mb-2 list-decimal space-y-1 pl-5" {...props} />
+          ),
+          li: (props) => <li className="leading-relaxed" {...props} />,
+          h1: (props) => <p className="font-semibold" {...props} />,
+          h2: (props) => <p className="font-semibold" {...props} />,
+          h3: (props) => <p className="font-semibold" {...props} />,
+          code: (props) => (
+            <code
+              className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]"
+              {...props}
+            />
+          ),
+          em: (props) => <em className="text-muted-foreground" {...props} />,
+        }}
+      >
+        {text}
+      </Markdown>
     </div>
   );
 }
@@ -76,7 +102,7 @@ export function AIExplain({ questionId }: { questionId: string }) {
           </Button>
         </div>
       ) : text ? (
-        <RichText text={text} />
+        <Explanation text={text} />
       ) : (
         <p className="text-sm text-muted-foreground">Thinking…</p>
       )}
