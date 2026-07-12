@@ -1,9 +1,11 @@
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 
-export const AI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+// Google Gemini has a free tier via Google AI Studio (aistudio.google.com/apikey).
+// gemini-2.0-flash is fast and free-tier friendly.
+export const AI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
 
 export function isAIConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.GEMINI_API_KEY);
 }
 
 export interface ExplainInput {
@@ -16,18 +18,18 @@ export interface ExplainInput {
   authorSolution?: string | null;
 }
 
-function buildMessages(input: ExplainInput): OpenAI.Chat.ChatCompletionMessageParam[] {
+const SYSTEM_PROMPT =
+  "You are an expert tutor for Indian competitive exams (NEET, JEE, CUET, CTET). " +
+  "Explain the solution to a single multiple-choice/numerical question clearly and concisely. " +
+  "Use short, numbered steps. State the key concept or formula, work through it, and end with the final answer. " +
+  "Keep it under ~180 words. Do not invent facts; if the provided correct answer seems off, explain the correct reasoning anyway.";
+
+function buildUserPrompt(input: ExplainInput): string {
   const optionsBlock = input.options.length
     ? input.options.map((o) => `${o.key}. ${o.text}`).join("\n")
     : "(numerical answer)";
 
-  const system =
-    "You are an expert tutor for Indian competitive exams (NEET, JEE, CUET, CTET). " +
-    "Explain the solution to a single multiple-choice/numerical question clearly and concisely. " +
-    "Use short, numbered steps. State the key concept or formula, work through it, and end with the final answer. " +
-    "Keep it under ~180 words. Do not invent facts; if the provided correct answer seems off, explain the correct reasoning anyway.";
-
-  const user = `Exam: ${input.examName}
+  return `Exam: ${input.examName}
 Subject: ${input.subject}${input.topic ? ` › ${input.topic}` : ""}
 
 Question:
@@ -40,11 +42,6 @@ Correct answer: ${input.correctText}
 ${input.authorSolution ? `\nReference solution (may be terse): ${input.authorSolution}` : ""}
 
 Give a step-by-step explanation of why this is correct.`;
-
-  return [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ];
 }
 
 /**
@@ -54,25 +51,27 @@ Give a step-by-step explanation of why this is correct.`;
 export async function* streamExplanation(
   input: ExplainInput
 ): AsyncGenerator<string> {
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const stream = await client.chat.completions.create({
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const stream = await ai.models.generateContentStream({
     model: AI_MODEL,
-    messages: buildMessages(input),
-    temperature: 0.3,
-    max_tokens: 400,
-    stream: true,
+    contents: buildUserPrompt(input),
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      temperature: 0.3,
+      maxOutputTokens: 800,
+    },
   });
 
   for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content;
-    if (delta) yield delta;
+    const text = chunk.text;
+    if (text) yield text;
   }
 }
 
 /** Fallback text when AI is not configured or the call fails. */
 export function fallbackExplanation(input: ExplainInput): string {
   if (input.authorSolution) {
-    return `**Solution.** ${input.authorSolution}\n\n_(AI explanations are disabled — showing the reference solution. Set OPENAI_API_KEY to enable AI.)_`;
+    return `**Solution.** ${input.authorSolution}\n\n_(AI explanations are disabled — showing the reference solution. Set GEMINI_API_KEY to enable AI.)_`;
   }
-  return `The correct answer is **${input.correctText}**.\n\n_(AI explanations are not configured. Set OPENAI_API_KEY to generate step-by-step solutions.)_`;
+  return `The correct answer is **${input.correctText}**.\n\n_(AI explanations are not configured. Set GEMINI_API_KEY to generate step-by-step solutions.)_`;
 }

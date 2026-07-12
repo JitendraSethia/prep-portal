@@ -7,7 +7,7 @@ per-student analytics** (who logged in, what they visited, and time spent on eac
 page/question).
 
 Built as a single **Next.js 16** app (App Router, TypeScript) with **PostgreSQL +
-Prisma**, **Auth.js (NextAuth v5)** for authentication, and the **OpenAI API** for
+Prisma**, **Auth.js (NextAuth v5)** for authentication, and the **Google Gemini API** for
 explanations.
 
 ---
@@ -17,7 +17,7 @@ explanations.
 - **Interactive exam portal** — countdown timer with auto-submit, question palette
   (answered / marked / skipped), mark-for-review, free navigation, per-question time
   tracking, resume-in-progress, and instant server-side scoring (+4 / −1, configurable).
-- **AI explanations** — streamed, step-by-step solutions per question (OpenAI), cached
+- **AI explanations** — streamed, step-by-step solutions per question (Gemini, free tier), cached
   in the database so repeat views are instant. Graceful fallback to the author solution
   when no API key is set.
 - **Question bank** — Exam → Subject → Topic → Subtopic taxonomy, tags, MCQ (single /
@@ -37,7 +37,7 @@ explanations.
 | UI        | Tailwind CSS v4, custom component primitives, Recharts |
 | Auth      | Auth.js / NextAuth v5 + Prisma adapter             |
 | Database  | PostgreSQL + Prisma ORM                            |
-| AI        | OpenAI (swappable via `lib/ai/provider.ts`)        |
+| AI        | Google Gemini, free tier (swappable via `lib/ai/provider.ts`) |
 
 ---
 
@@ -52,7 +52,7 @@ explanations.
 ### 2. Configure environment
 ```bash
 cp .env.example .env
-# then edit .env — at minimum set AUTH_SECRET (npx auth secret) and OPENAI_API_KEY
+# then edit .env — at minimum set AUTH_SECRET (npx auth secret) and GEMINI_API_KEY
 ```
 
 ### 3. Install, migrate, seed
@@ -73,7 +73,7 @@ npm run dev             # http://localhost:3000
 | Admin   | `admin@prep.test`   | `Admin@12345` |
 | Student | `student@prep.test` | `Student@123` |
 
-> If `OPENAI_API_KEY` is empty, the app still runs — "Explain with AI" falls back to the
+> If `GEMINI_API_KEY` is empty, the app still runs — "Explain with AI" falls back to the
 > stored reference solution. Google login requires `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`;
 > email/password works without it.
 
@@ -120,7 +120,7 @@ components/           ui primitives, exam player, admin widgets, analytics
 lib/
   db.ts              Prisma client singleton
   auth.ts            session/role guards (requireUser / requireAdmin)
-  ai/provider.ts     OpenAI wrapper (swap providers here)
+  ai/provider.ts     Gemini wrapper (swap providers here)
   exam/              scoring, question/response parsing, player DTOs
   actions/           server actions (attempts, admin, profile)
   data/              read-side aggregations (taxonomy, analytics)
@@ -152,7 +152,7 @@ docker run -p 3000:3000 --env-file .env prep-portal
 ```
 
 **Vercel + Neon:** import the repo, set env vars (`DATABASE_URL`, `AUTH_SECRET`,
-`AUTH_GOOGLE_*`, `OPENAI_API_KEY`), and run `npm run db:deploy` against the production DB.
+`AUTH_GOOGLE_*`, `GEMINI_API_KEY`), and run `npm run db:deploy` against the production DB.
 
 For AWS: host Postgres on **RDS**, run the container on **ECS/Fargate** or **App Runner**,
 and store secrets in **Secrets Manager** / task env.
