@@ -1,8 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
 // Google Gemini has a free tier via Google AI Studio (aistudio.google.com/apikey).
-// gemini-2.0-flash is fast and free-tier friendly.
-export const AI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+// `gemini-flash-latest` tracks the current free-tier flash model and returns
+// text directly (unlike 2.5-flash's "thinking" budget quirks).
+export const AI_MODEL = process.env.GEMINI_MODEL ?? "gemini-flash-latest";
 
 export function isAIConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);

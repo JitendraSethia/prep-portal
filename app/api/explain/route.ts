@@ -72,16 +72,12 @@ export async function POST(request: Request) {
 
   // Not configured — return fallback without caching.
   if (!isAIConfigured()) {
-    return new Response(
-      fallbackExplanation(input) +
-        "\n\n[debug: GEMINI_API_KEY is not set in this deployment's runtime env]",
-      {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Cache": "FALLBACK",
-        },
-      }
-    );
+    return new Response(fallbackExplanation(input), {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Cache": "FALLBACK",
+      },
+    });
   }
 
   // Stream from the model, accumulate, then cache + log on completion.
@@ -98,12 +94,7 @@ export async function POST(request: Request) {
         failed = true;
         const msg = err instanceof Error ? err.message : String(err);
         console.error("[explain] Gemini error:", msg);
-        controller.enqueue(
-          encoder.encode(
-            (full ? "\n\n" : "") +
-              `⚠️ AI request failed. [debug: ${msg}] (model: ${AI_MODEL})`
-          )
-        );
+        controller.enqueue(encoder.encode("\n\n" + fallbackExplanation(input)));
       }
 
       if (!failed && full.trim()) {
