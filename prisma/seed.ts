@@ -4,9 +4,17 @@ import {
   Difficulty,
   PaperType,
 } from "@prisma/client";
+import { withAccelerate } from "@prisma/extension-accelerate";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+// Match lib/db.ts: use Accelerate for Prisma Postgres (`prisma+postgres://`) URLs.
+const dbUrl = process.env.DATABASE_URL ?? "";
+const useAccelerate =
+  dbUrl.startsWith("prisma+postgres://") || dbUrl.startsWith("prisma://");
+const baseClient = new PrismaClient();
+const prisma = (
+  useAccelerate ? baseClient.$extends(withAccelerate()) : baseClient
+) as unknown as PrismaClient;
 
 type SeedQuestion = {
   stem: string;
