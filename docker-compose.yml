@@ -1,0 +1,26 @@
+# Local Postgres for development.
+# Usage:
+#   docker compose up -d
+#   npm run db:migrate   # apply schema
+#   npm run db:seed      # load demo data
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: neet_portal_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: neet
+      POSTGRES_PASSWORD: neet
+      POSTGRES_DB: neet_portal
+    ports:
+      - "5432:5432"
+    volumes:
+      - neet_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neet -d neet_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  neet_pgdata:
