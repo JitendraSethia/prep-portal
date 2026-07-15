@@ -8,6 +8,21 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Normalize LLM markdown so it renders cleanly:
+ * - strip a code fence wrapping the whole response (```markdown … ```)
+ * - convert LaTeX \( … \) / \[ … \] delimiters into the $ … $ / $$ … $$
+ *   forms that remark-math understands (Gemini emits the backslash form).
+ */
+function normalizeLLMMarkdown(raw: string): string {
+  let s = raw.trim();
+  const fenced = s.match(/^```[a-zA-Z]*\n([\s\S]*?)\n```$/);
+  if (fenced) s = fenced[1];
+  return s
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m}$$`)
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, m) => `$${m}$`);
+}
+
 /** Renders the AI explanation as Markdown with KaTeX math support. */
 function Explanation({ text }: { text: string }) {
   return (
@@ -38,7 +53,7 @@ function Explanation({ text }: { text: string }) {
           em: (props) => <em className="text-muted-foreground" {...props} />,
         }}
       >
-        {text}
+        {normalizeLLMMarkdown(text)}
       </Markdown>
     </div>
   );

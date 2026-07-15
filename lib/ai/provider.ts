@@ -22,8 +22,13 @@ export interface ExplainInput {
 const SYSTEM_PROMPT =
   "You are an expert tutor for Indian competitive exams (NEET, JEE, CUET, CTET). " +
   "Explain the solution to a single multiple-choice/numerical question clearly and concisely. " +
-  "Use short, numbered steps. State the key concept or formula, work through it, and end with the final answer. " +
-  "Keep it under ~180 words. Do not invent facts; if the provided correct answer seems off, explain the correct reasoning anyway.";
+  "Use short, numbered steps. State the key concept or formula, work through it, and end with the final answer.\n\n" +
+  "FORMAT RULES (strict):\n" +
+  "- Reply in GitHub-flavored Markdown. Do NOT wrap the whole reply in a code fence.\n" +
+  "- Write all math with dollar delimiters: inline as $...$ and display equations as $$...$$. " +
+  "Never use \\( \\), \\[ \\], or bare LaTeX without dollar signs.\n" +
+  "- Use a numbered list for the steps and end with a line like: **Answer: <value>**.\n" +
+  "- Keep it under ~180 words. Do not invent facts; if the provided correct answer seems off, explain the correct reasoning anyway.";
 
 function buildUserPrompt(input: ExplainInput): string {
   const optionsBlock = input.options.length

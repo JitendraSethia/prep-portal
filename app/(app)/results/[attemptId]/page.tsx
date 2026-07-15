@@ -8,6 +8,7 @@ import {
   parseCorrectAnswer,
   parseResponse,
 } from "@/lib/exam/types";
+import { scoreAnswer } from "@/lib/exam/scoring";
 import { formatDuration, cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,31 +46,53 @@ export default async function ResultsPage({
 
   const answerByQ = new Map(attempt.answers.map((a) => [a.questionId, a]));
 
-  // Subject-wise breakdown.
+  // Recompute each question's outcome from the stored response + correct answer.
+  // Deriving results here (instead of trusting the denormalized columns) keeps
+  // the page correct even for attempts scored before answer-parsing was fixed.
+  const results = attempt.paper.questions.map((pq) => {
+    const q = pq.question;
+    const ans = answerByQ.get(q.id);
+    const scored = scoreAnswer(q, ans?.response ?? null);
+    const state: "correct" | "wrong" | "skipped" = !scored.attempted
+      ? "skipped"
+      : scored.isCorrect
+        ? "correct"
+        : "wrong";
+    return { pq, q, ans, scored, state };
+  });
+
+  // Subject-wise breakdown + overall totals, from the recomputed results.
   const bySubject = new Map<
     string,
     { correct: number; incorrect: number; unattempted: number; time: number }
   >();
-  for (const pq of attempt.paper.questions) {
-    const subj = pq.question.subject.name;
+  let correctCount = 0;
+  let incorrectCount = 0;
+  let unattemptedCount = 0;
+  let score = 0;
+  let maxScore = 0;
+  for (const { q, ans, scored, state } of results) {
+    maxScore += q.marks;
+    score += scored.marksAwarded;
+    if (state === "correct") correctCount++;
+    else if (state === "wrong") incorrectCount++;
+    else unattemptedCount++;
+
+    const subj = q.subject.name;
     const row =
       bySubject.get(subj) ??
       { correct: 0, incorrect: 0, unattempted: 0, time: 0 };
-    const ans = answerByQ.get(pq.question.id);
-    if (!ans || ans.isCorrect === null) row.unattempted++;
-    else if (ans.isCorrect) row.correct++;
-    else row.incorrect++;
+    if (state === "correct") row.correct++;
+    else if (state === "wrong") row.incorrect++;
+    else row.unattempted++;
     row.time += ans?.timeSpentMs ?? 0;
     bySubject.set(subj, row);
   }
 
   const totalQ = attempt.paper.questions.length;
+  const attemptedCount = correctCount + incorrectCount;
   const accuracy =
-    (attempt.correct ?? 0) + (attempt.incorrect ?? 0) > 0
-      ? ((attempt.correct ?? 0) /
-          ((attempt.correct ?? 0) + (attempt.incorrect ?? 0))) *
-        100
-      : 0;
+    attemptedCount > 0 ? (correctCount / attemptedCount) * 100 : 0;
   const totalTime = attempt.answers.reduce((s, a) => s + a.timeSpentMs, 0);
 
   return (
@@ -100,10 +123,10 @@ export default async function ResultsPage({
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">Score</p>
             <p className="text-3xl font-bold">
-              {attempt.score?.toFixed(0)}
+              {score.toFixed(0)}
               <span className="text-lg font-medium text-muted-foreground">
                 {" "}
-                / {attempt.maxScore?.toFixed(0)}
+                / {maxScore.toFixed(0)}
               </span>
             </p>
           </CardContent>
@@ -118,13 +141,13 @@ export default async function ResultsPage({
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex flex-col text-sm">
               <span className="inline-flex items-center gap-1 text-success">
-                <CheckCircle2 className="size-4" /> {attempt.correct} correct
+                <CheckCircle2 className="size-4" /> {correctCount} correct
               </span>
               <span className="inline-flex items-center gap-1 text-destructive">
-                <XCircle className="size-4" /> {attempt.incorrect} wrong
+                <XCircle className="size-4" /> {incorrectCount} wrong
               </span>
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <MinusCircle className="size-4" /> {attempt.unattempted} skipped
+                <MinusCircle className="size-4" /> {unattemptedCount} skipped
               </span>
             </div>
           </CardContent>
@@ -173,18 +196,22 @@ export default async function ResultsPage({
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Review & solutions</h2>
         <div className="space-y-4">
-          {attempt.paper.questions.map((pq, i) => {
-            const q = pq.question;
-            const ans = answerByQ.get(q.id);
+          {results.map(({ q, ans, scored, state }, i) => {
             const options = parseOptions(q.options);
             const correct = parseCorrectAnswer(q.type, q.answer);
             const response = parseResponse(q.type, ans?.response ?? null);
-            const state =
-              !ans || ans.isCorrect === null
-                ? "skipped"
-                : ans.isCorrect
-                  ? "correct"
-                  : "wrong";
+
+            const chosenKeys = response.kind === "mcq" ? response.keys : [];
+            const correctKeys = correct.kind === "mcq" ? correct.keys : [];
+            const chosenLabel = chosenKeys.length
+              ? chosenKeys.join(", ")
+              : "Not answered";
+            const correctLabel = correctKeys.join(", ");
+
+            const numericChosen =
+              response.kind === "numerical" ? response.value : null;
+            const numericCorrect =
+              correct.kind === "numerical" ? correct.value : null;
 
             return (
               <Card key={q.id}>
@@ -204,61 +231,109 @@ export default async function ResultsPage({
                       }
                     >
                       {state === "correct"
-                        ? `+${ans?.marksAwarded}`
+                        ? "Correct"
                         : state === "wrong"
-                          ? `${ans?.marksAwarded}`
-                          : "0"}
+                          ? "Wrong"
+                          : "Skipped"}
+                      {" · "}
+                      {scored.marksAwarded > 0
+                        ? `+${scored.marksAwarded}`
+                        : scored.marksAwarded}
                     </Badge>
                   </div>
 
                   {q.type !== "NUMERICAL" ? (
-                    <div className="space-y-2">
-                      {options.map((opt) => {
-                        const isCorrect = correct.kind === "mcq" && correct.keys.includes(opt.key);
-                        const isChosen =
-                          response.kind === "mcq" &&
-                          response.keys.includes(opt.key);
-                        return (
-                          <div
-                            key={opt.key}
+                    <>
+                      {/* Explicit answer summary */}
+                      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                        <span>
+                          Your answer:{" "}
+                          <strong
                             className={cn(
-                              "flex items-center gap-3 rounded-lg border p-2.5 text-sm",
-                              isCorrect
-                                ? "border-success/50 bg-success/10"
-                                : isChosen
-                                  ? "border-destructive/50 bg-destructive/10"
-                                  : "border-border"
+                              state === "correct" && "text-success",
+                              state === "wrong" && "text-destructive",
+                              state === "skipped" && "text-muted-foreground"
                             )}
                           >
-                            <span className="flex size-6 items-center justify-center rounded-full border border-border text-xs font-semibold">
-                              {opt.key}
-                            </span>
-                            <span>{opt.text}</span>
-                            {isCorrect && (
-                              <CheckCircle2 className="ml-auto size-4 text-success" />
-                            )}
-                            {isChosen && !isCorrect && (
-                              <XCircle className="ml-auto size-4 text-destructive" />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                            {chosenLabel}
+                          </strong>
+                        </span>
+                        <span>
+                          Correct answer:{" "}
+                          <strong className="text-success">
+                            {correctLabel}
+                          </strong>
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {options.map((opt) => {
+                          const isCorrect = correctKeys.includes(opt.key);
+                          const isChosen = chosenKeys.includes(opt.key);
+                          return (
+                            <div
+                              key={opt.key}
+                              className={cn(
+                                "flex items-center gap-3 rounded-lg border p-2.5 text-sm",
+                                isCorrect
+                                  ? "border-success/50 bg-success/10"
+                                  : isChosen
+                                    ? "border-destructive/50 bg-destructive/10"
+                                    : "border-border"
+                              )}
+                            >
+                              <span className="flex size-6 items-center justify-center rounded-full border border-border text-xs font-semibold">
+                                {opt.key}
+                              </span>
+                              <span>{opt.text}</span>
+                              <span className="ml-auto flex items-center gap-2 whitespace-nowrap text-xs font-medium">
+                                {isChosen && (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5",
+                                      isCorrect
+                                        ? "bg-success/15 text-success"
+                                        : "bg-destructive/15 text-destructive"
+                                    )}
+                                  >
+                                    {isCorrect ? (
+                                      <CheckCircle2 className="size-3.5" />
+                                    ) : (
+                                      <XCircle className="size-3.5" />
+                                    )}
+                                    Your answer
+                                  </span>
+                                )}
+                                {isCorrect && !isChosen && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-success">
+                                    <CheckCircle2 className="size-3.5" />
+                                    Correct answer
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   ) : (
-                    <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
                       <span>
                         Your answer:{" "}
-                        <strong>
-                          {response.kind === "numerical" &&
-                          response.value !== null
-                            ? response.value
-                            : "—"}
+                        <strong
+                          className={cn(
+                            state === "correct" && "text-success",
+                            state === "wrong" && "text-destructive",
+                            state === "skipped" && "text-muted-foreground"
+                          )}
+                        >
+                          {numericChosen !== null ? numericChosen : "Not answered"}
                         </strong>
                       </span>
-                      <span className="text-success">
-                        Correct:{" "}
-                        <strong>
-                          {correct.kind === "numerical" ? correct.value : ""}
+                      <span>
+                        Correct answer:{" "}
+                        <strong className="text-success">
+                          {numericCorrect}
                         </strong>
                       </span>
                     </div>

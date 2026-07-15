@@ -62,8 +62,13 @@ export function parseResponse(
       value: typeof v?.value === "number" ? v.value : null,
     };
   }
-  const keys = Array.isArray(value)
-    ? (value.filter((k) => typeof k === "string") as string[])
-    : [];
+  // The player stores MCQ responses as a wrapped object { kind, keys }, but
+  // older/imported data may store a bare array of keys. Accept both.
+  const rawKeys = Array.isArray(value)
+    ? value
+    : Array.isArray((value as { keys?: unknown })?.keys)
+      ? (value as { keys: unknown[] }).keys
+      : [];
+  const keys = rawKeys.filter((k): k is string => typeof k === "string");
   return { kind: "mcq", keys };
 }
